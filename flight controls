@@ -1,0 +1,90 @@
+#include <Servo.h>
+
+// --- PIN DEFINITIONS ---
+// Receiver Input Pins (Connect to RC Receiver channels)
+const int THROTTLE_IN_PIN = 2;
+const int STEERING_IN_PIN = 3;  // Optional: For differential thrust
+const int GEAR_IN_PIN     = 4;  // Switch channel for landing gear
+const int AUX1_IN_PIN     = 5;  // Extra servo 1 input
+const int AUX2_IN_PIN     = 6;  // Extra servo 2 input
+
+// Output Pins (Connect to ESCs and Servos)
+const int LEFT_MOTOR_PIN  = 8;
+const int RIGHT_MOTOR_PIN = 9;
+const int GEAR_SERVO_PIN  = 10;
+const int AUX1_SERVO_PIN  = 11;
+const int AUX2_SERVO_PIN  = 12;
+
+// --- SERVO OBJECTS ---
+Servo leftMotor;
+Servo rightMotor;
+Servo gearServo;
+Servo aux1Servo;
+Servo aux2Servo;
+
+void setup() {
+  // Initialize receiver pins as inputs
+  pinMode(THROTTLE_IN_PIN, INPUT);
+  pinMode(STEERING_IN_PIN, INPUT);
+  pinMode(GEAR_IN_PIN, INPUT);
+  pinMode(AUX1_IN_PIN, INPUT);
+  pinMode(AUX2_IN_PIN, INPUT);
+
+  // Attach servos and ESCs to their output pins
+  leftMotor.attach(LEFT_MOTOR_PIN, 1000, 2000);
+  rightMotor.attach(RIGHT_MOTOR_PIN, 1000, 2000);
+  gearServo.attach(GEAR_SERVO_PIN);
+  aux1Servo.attach(AUX1_SERVO_PIN);
+  aux2Servo.attach(AUX2_SERVO_PIN);
+
+  // Safety: Initialize motors to off (1000us pulse is zero throttle)
+  leftMotor.writeMicroseconds(1000);
+  rightMotor.writeMicroseconds(1000);
+}
+
+void loop() {
+  // Read PWM pulse widths from the RC receiver (values roughly between 1000 and 2000)
+  int throttleIn = pulseIn(THROTTLE_IN_PIN, HIGH);
+  int steeringIn = pulseIn(STEERING_IN_PIN, HIGH);
+  int gearIn     = pulseIn(GEAR_IN_PIN, HIGH);
+  int aux1In     = pulseIn(AUX1_IN_PIN, HIGH);
+  int aux2In     = pulseIn(AUX2_IN_PIN, HIGH);
+
+  // --- MOTOR & DIFFERENTIAL THRUST CONTROL ---
+  // Default to mid-range if receiver signal is lost or unread
+  if (throttleIn < 900) throttleIn = 1000; 
+  if (steeringIn < 900) steeringIn = 1500;
+
+  // Mix throttle and steering for differential thrust tracking
+  int steeringOffset = map(steeringIn, 1000, 2000, -200, 200); 
+  int leftMotorVal   = throttleIn + steeringOffset;
+  int rightMotorVal  = throttleIn - steeringOffset;
+
+  // Constrain outputs to safe ESC pulse width boundaries (1000us to 2000us)
+  leftMotorVal  = constrain(leftMotorVal, 1000, 2000);
+  rightMotorVal = constrain(rightMotorVal, 1000, 2000);
+
+  // Write finalized speeds to the dual motors
+  leftMotor.writeMicroseconds(leftMotorVal);
+  rightMotor.writeMicroseconds(rightMotorVal);
+
+  // --- LANDING GEAR CONTROL ---
+  if (gearIn > 1500) {
+    gearServo.write(180); // Deployed position (Adjust angle as needed)
+  } else {
+    gearServo.write(0);   // Retracted position (Adjust angle as needed)
+  }
+
+  // --- EXTRA SERVOS (DIRECT PASS-THROUGH) ---
+  if (aux1In > 900) {
+    int aux1Angle = map(aux1In, 1000, 2000, 0, 180);
+    aux1Servo.write(aux1Angle);
+  }
+  
+  if (aux2In > 900) {
+    int aux2Angle = map(aux2In, 1000, 2000, 0, 180);
+    aux2Servo.write(aux2Angle);
+  }
+
+  delay(20); // Small delay for servo signal stability
+}
